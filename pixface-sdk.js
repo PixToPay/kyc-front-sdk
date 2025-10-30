@@ -52,6 +52,15 @@
     integrationId: null, // REQUIRED
     api_key: null, // preferred required header name
     publicKey: null, // legacy compatibility
+    // Safe, opt-in UX improvements (defaults keep current behavior)
+    lockBodyScroll: true, // já era o comportamento atual; pode ser desligado
+    injectResponsiveStyles: false, // injeta --popup-height e ajusta dvh (iOS)
+    forceMobileViewport: false, // força largura máxima custom no content
+    mobileMaxWidth: null, // ex.: 480 (px). Se null, mantém CSS padrão (425px)
+    showCloseButton: null, // null => segue autoOpenValidation; true/false força
+    optimizeResizeUpdates: true, // debounce de resize para cálculos de layout
+    strictLang: false, // valida/normaliza idioma recebido
+    allowedLangs: ["pt", "en", "es"],
   };
 
   var DEFAULT_FIELD_IDS = {
@@ -182,7 +191,7 @@
       style.type = "text/css";
       var cssVars =
         ":root{--pf-primary:#a9d001;--pf-dark:#1d2939;--pf-bg:#f9fafb;--pf-success:#22c55e;--pf-warning:#f59e0b;--pf-error:#ef4444;--pf-card:#ffffff;--pf-muted:#f2f4f7;}";
-      style.appendChild(document.createTextNode(cssVars + CSS_STRING));
+    style.appendChild(document.createTextNode(cssVars + CSS_STRING));
       document.head.appendChild(style);
       state.styleEl = style;
     }
@@ -202,6 +211,14 @@
 
       var content = document.createElement("div");
       content.className = "pf-dialog__content";
+      // force mobile viewport width if requested (host-side container only)
+      if (options.forceMobileViewport && typeof options.mobileMaxWidth === "number") {
+        try {
+          content.style.maxWidth = String(options.mobileMaxWidth) + "px";
+          content.style.width = "100%";
+          content.style.margin = "0 auto";
+        } catch (_) {}
+      }
 
       var iframe = document.createElement("iframe");
       iframe.id = "pixface-iframe";
@@ -215,7 +232,7 @@
       var closeBtn = document.createElement("button");
       closeBtn.id = state.actionIds.close_dialog;
       closeBtn.className =
-        "pf-dialog__close" + (options.autoOpenValidation ? " pf-hidden" : "");
+        "pf-dialog__close" + (shouldHideCloseButton() ? " pf-hidden" : "");
       closeBtn.type = "button";
       closeBtn.textContent = "×";
 
@@ -230,16 +247,53 @@
       state.iframeEl = iframe;
     }
 
+    function shouldHideCloseButton() {
+      if (typeof options.showCloseButton === "boolean") {
+        return options.showCloseButton ? false : true;
+      }
+      return !!options.autoOpenValidation;
+    }
+
+    // Responsive popup-height for better iOS dvh handling (opt-in)
+    var resizeTimer = null;
+    function updatePopupHeightVar() {
+      try {
+        var toolbarHeight = window.screen.availHeight - window.innerHeight;
+        var popupHeight = window.screen.availHeight - (toolbarHeight > 0 ? toolbarHeight : 0);
+        document.documentElement.style.setProperty("--pf-popup-height", String(popupHeight) + "px");
+      } catch (_) {}
+    }
+    function attachResizeHandler() {
+      if (!options.injectResponsiveStyles) return;
+      var handler = function () {
+        if (!options.optimizeResizeUpdates) {
+          updatePopupHeightVar();
+          return;
+        }
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function () {
+          updatePopupHeightVar();
+        }, 150);
+      };
+      window.addEventListener("resize", handler);
+      // initial compute
+      updatePopupHeightVar();
+    }
+
     function setDialogOpen(open, refId) {
       if (!state.dialogEl) return;
       if (open) {
         state.dialogEl.setAttribute("data-open", "true");
-        document.body.style.overflow = "hidden";
+        if (options.lockBodyScroll) document.body.style.overflow = "hidden";
+        try {
+          // focus management: move focus into dialog on open
+          state.dialogEl.focus && state.dialogEl.focus();
+        } catch (_) {}
         safeEventHandler({ name: "modal", status: "open", refId: refId });
       } else {
         state.dialogEl.setAttribute("data-open", "false");
         state.dialogEl.style.display = "";
-        document.body.style.overflow = "";
+        if (options.lockBodyScroll) document.body.style.overflow = "";
         safeEventHandler({ name: "modal", status: "close", refId: refId });
       }
     }
@@ -539,6 +593,13 @@
         }
         injectCSS();
         ensureDOM();
+        if (options.injectResponsiveStyles) {
+          // ensure the dialog/content consume the CSS var when present
+          try {
+            state.contentEl.style.height = "var(--pf-popup-height, 90dvh)";
+          } catch (_) {}
+          attachResizeHandler();
+        }
         attachMessageListener();
         attachActionHandlers();
         state.mounted = true;
@@ -550,7 +611,13 @@
     }
 
     function setLang(lang) {
-      state.lang = lang || "pt";
+      var nextLang = lang || "pt";
+      if (options.strictLang) {
+        if (options.allowedLangs.indexOf(nextLang) === -1) {
+          nextLang = options.allowedLangs[0] || "pt";
+        }
+      }
+      state.lang = nextLang;
       if (state.iframeEl && state.iframeEl.src) {
         try {
           var url = new URL(state.iframeEl.src, window.location.href);

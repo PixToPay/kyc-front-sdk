@@ -133,6 +133,14 @@
         onError: (name, data) => log("error", name, data),
         eventHandler: (evt) => log("event", evt.type || evt.name, evt),
         // allowedPostMessageOrigins: ["https://kyc.dev.pixtopay.com"], // opcional; por padrão usa o kycFrontOrigin
+        // --- Novas opções (opt-in, seguras) ---
+        forceMobileViewport: true, // força largura "mobile" no host
+        mobileMaxWidth: 480,       // ajuste conforme seu layout
+        injectResponsiveStyles: true, // ativa --pf-popup-height/dvh
+        lockBodyScroll: true,         // mantém bloqueio de scroll durante o modal
+        showCloseButton: true,        // força exibir botão fechar (ou null para seguir autoOpenValidation)
+        optimizeResizeUpdates: true,  // debounce em resize
+        strictLang: false,            // iframe ignora lang; manter false por padrão
       });
 
       sdk.changeFieldId({ fieldName: "cpf", fieldId: "pixface-hydrate-cpf" });
