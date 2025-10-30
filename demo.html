@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PixFace SDK - Demo local</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu,
+          Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji",
+          "Segoe UI Emoji";
+        margin: 24px;
+        background: #f8f9fb;
+        color: #1d2939;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 16px 20px;
+        max-width: 840px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        margin: 10px 0;
+        flex-wrap: wrap;
+      }
+      .row label {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 14px;
+      }
+      input {
+        padding: 10px 12px;
+        border: 1px solid #d0d5dd;
+        border-radius: 8px;
+        min-width: 260px;
+      }
+      input[data-pixface-invalid="true"] {
+        border-color: #ef4444;
+        outline-color: #ef4444;
+        background: #fff1f2;
+      }
+      button {
+        padding: 10px 14px;
+        border-radius: 8px;
+        border: 1px solid #d0d5dd;
+        background: #fff;
+        cursor: pointer;
+      }
+      button.primary {
+        background: #1d2939;
+        color: #fff;
+        border-color: #1d2939;
+      }
+      button.warn {
+        background: #f59e0b;
+        color: #fff;
+        border-color: #f59e0b;
+      }
+      button.success {
+        background: #22c55e;
+        color: #fff;
+        border-color: #22c55e;
+      }
+      button[data-pixface-loading="true"] {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      #log {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        font-size: 12px;
+        background: #0b1020;
+        color: #e2e8f0;
+        padding: 12px;
+        border-radius: 10px;
+        max-height: 240px;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>PixFace SDK — Demo</h1>
+    <div id="pixface-root"></div>
+
+    <div class="card">
+      <div class="row">
+        <label>
+          CPF (somente números)
+          <input id="pixface-hydrate-cpf" placeholder="52998224725" />
+        </label>
+        <label>
+          Reference ID (opcional)
+          <input id="pixface-hydrate-referenceId" placeholder="ref-123" />
+        </label>
+        <label>
+          Action (opcional)
+          <input id="pixface-hydrate-action" placeholder="checkout|kyc|..." />
+        </label>
+      </div>
+      <div class="row">
+        <button id="pixface-action-verify" class="primary">
+          Verificar (default)
+        </button>
+        <button id="pixface-action-verify-sow-flow" class="warn">
+          Abrir SOW
+        </button>
+        <button id="pixface-action-faceindex" class="success">
+          FaceIndex (liveness)
+        </button>
+        <button id="pixface-action-close_dialog">Fechar modal</button>
+      </div>
+    </div>
+
+    <h3>Eventos</h3>
+    <pre id="log"></pre>
+
+    <script src="./pixface-sdk.js"></script>
+    <script>
+      // Ajuste estes valores conforme seu ambiente/dev/prod
+      const sdk = PixFace({
+        apiURL: "https://kyc-api.pixtopay.com.br",
+        integrationId: "12345678-51a2-43d1-b456-426614174111", // OBRIGATÓRIO
+        api_key: "b326c65e-b036-46ee-8090-cd9c5d5fe20f", // OBRIGATÓRIO
+        kycFrontOrigin: "https://face.pixtopay.com.br",
+        lang: "pt",
+        enableRedirect: false,
+        onSuccess: (name, data) => log("success", name, data),
+        onError: (name, data) => log("error", name, data),
+        eventHandler: (evt) => log("event", evt.type || evt.name, evt),
+        // allowedPostMessageOrigins: ["https://kyc.dev.pixtopay.com"], // opcional; por padrão usa o kycFrontOrigin
+      });
+
+      sdk.changeFieldId({ fieldName: "cpf", fieldId: "pixface-hydrate-cpf" });
+      sdk.changeFieldId({
+        fieldName: "referenceId",
+        fieldId: "pixface-hydrate-referenceId",
+      });
+      sdk.changeFieldId({
+        fieldName: "action",
+        fieldId: "pixface-hydrate-action",
+      });
+      sdk.changeActionId({
+        actionName: "verify",
+        actionId: "pixface-action-verify",
+      });
+      sdk.changeActionId({
+        actionName: "verify-sow-flow",
+        actionId: "pixface-action-verify-sow-flow",
+      });
+      sdk.changeActionId({
+        actionName: "faceindex",
+        actionId: "pixface-action-faceindex",
+      });
+      sdk.changeActionId({
+        actionName: "close_dialog",
+        actionId: "pixface-action-close_dialog",
+      });
+
+      sdk.mount();
+
+      function log(kind, name, data) {
+        const el = document.getElementById("log");
+        const ts = new Date().toISOString();
+        const line = `[${ts}] ${kind}: ${name} ${
+          data ? JSON.stringify(data) : ""
+        }`;
+        el.textContent = line + "\n" + el.textContent;
+      }
+
+      // --- CPF mask + validation (demo UX) ---
+      const cpfInput = document.getElementById("pixface-hydrate-cpf");
+      const btnIds = [
+        "pixface-action-verify",
+        "pixface-action-verify-sow-flow",
+        "pixface-action-faceindex",
+      ];
+
+      function onlyDigits(v) {
+        return (v || "").replace(/\D+/g, "");
+      }
+
+      function formatCPF(d) {
+        const s = onlyDigits(d).slice(0, 11);
+        const p1 = s.slice(0, 3);
+        const p2 = s.slice(3, 6);
+        const p3 = s.slice(6, 9);
+        const p4 = s.slice(9, 11);
+        let out = "";
+        if (p1) out = p1;
+        if (p2) out += (out ? "." : "") + p2;
+        if (p3) out += (out ? "." : "") + p3;
+        if (p4) out += (out ? "-" : "") + p4;
+        return out;
+      }
+
+      function setButtonsDisabled(disabled) {
+        btnIds.forEach((id) => {
+          const b = document.getElementById(id);
+          if (b) b.disabled = !!disabled;
+        });
+      }
+
+      function updateCPFState() {
+        const masked = formatCPF(cpfInput.value);
+        if (cpfInput.value !== masked) cpfInput.value = masked;
+        const digits = onlyDigits(masked);
+        const valid = sdk.checkCPF
+          ? sdk.checkCPF(digits)
+          : digits.length === 11;
+        if (!valid) {
+          cpfInput.setAttribute("data-pixface-invalid", "true");
+          setButtonsDisabled(true);
+        } else {
+          cpfInput.removeAttribute("data-pixface-invalid");
+          setButtonsDisabled(false);
+        }
+      }
+
+      if (cpfInput) {
+        cpfInput.addEventListener("input", updateCPFState);
+        cpfInput.addEventListener("blur", updateCPFState);
+        // Initialize state
+        updateCPFState();
+      }
+    </script>
+  </body>
+</html>
